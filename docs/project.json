@@ -1,6 +1,6 @@
 {
   "name": "DNF Mobile Action Game",
   "app_slug": "dnf-mobile-action",
-  "version_description": "搭建轮盘操作横版动作游戏基础框架",
+  "version_description": "DNF手游风格界面重构四技能波次系统",
   "preview_type": "pc"
 }

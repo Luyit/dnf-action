@@ -1,251 +1,108 @@
 import Phaser from 'phaser';
-import { ENEMY_TYPES, LANE_LIST } from '../config/GameConfig.js';
+import { ENEMY_TYPES, LANE_LIST, GAME_WIDTH } from '../config/GameConfig.js';
 
-/**
- * 敌人实体
- * 具有巡逻、追逐、攻击三种 AI 状态
- */
 export class Enemy extends Phaser.Physics.Arcade.Sprite {
-  /**
-   * @param {Phaser.Scene} scene
-   * @param {number} x
-   * @param {number} lane 通道索引 0/1/2
-   * @param {string} type - 'BASIC' | 'HEAVY' | 'FAST'
-   */
-  constructor(scene, x, lane, type = 'BASIC') {
-    const cfg = ENEMY_TYPES[type];
-    const texKey = `enemy_${type.toLowerCase()}`;
-    const y = LANE_LIST[lane];
-
-    super(scene, x, y, texKey);
-    scene.add.existing(this);
-    scene.physics.add.existing(this);
-
-    // 配置
-    this.enemyType = type;
-    this.enemyConfig = cfg;
-    this.hp = cfg.hp;
-    this.maxHp = cfg.hp;
-    this.lane = lane;
-
-    // AI 状态：'idle' | 'patrol' | 'chase' | 'attack' | 'hurt' | 'dead'
-    this.aiState = 'patrol';
-    this.attackCooldown = 0;
-    this.patrolDir = 1; // 巡逻方向
-    this.patrolTimer = 0;
-    this.hurtTimer = 0;
-    this.alive = true;
-
-    // 出生向左看
-    this.setFlipX(true);
-
-    // 碰撞体
-    this.body.setSize(cfg.width * 0.6, cfg.height * 0.7);
-    this.setOrigin(0.5, 1);
-
-    // 出生特效
-    this.setAlpha(0);
-    this.scene.tweens.add({
-      targets: this,
-      alpha: 1,
-      duration: 300,
-    });
+  constructor(scene, x, lane, type='BASIC') {
+    const cfg=ENEMY_TYPES[type]; const y=LANE_LIST[lane];
+    super(scene,x,y,`enemy_${type.toLowerCase()}`);
+    scene.add.existing(this); scene.physics.add.existing(this);
+    this.enemyType=type; this.enemyConfig=cfg; this.hp=cfg.hp; this.maxHp=cfg.hp;
+    this.lane=lane; this.aiState='patrol'; this.attackCD=0; this.patrolDir=1;
+    this.patrolTimer=0; this.hurtTimer=0; this.alive=true;
+    this.setFlipX(true); this.body.setSize(cfg.w*0.6,cfg.h*0.7);
+    this.setOrigin(0.5,1);
+    // Boss 标记
+    this.isBoss = type==='BOSS';
+    if(type==='ELITE'||type==='BOSS') this.setScale(1.2);
+    this.setAlpha(0); scene.tweens.add({targets:this,alpha:1,duration:300});
+    if(this.isBoss) this._showBossBar();
   }
 
-  /**
-   * 受到伤害
-   */
+  _showBossBar() {
+    const W = GAME_WIDTH;
+    const g = this.scene.add.graphics().setScrollFactor(0).setDepth(600);
+    g.fillStyle(0x000000,0.5); g.fillRoundedRect(W/2-120,4,240,16,4);
+    this.bossBarBg = g;
+    this.bossBar = this.scene.add.graphics().setScrollFactor(0).setDepth(601);
+    this.bossName = this.scene.add.text(W/2,12,this.enemyConfig.name,{fontSize:'11px',fontFamily:'Arial',fontStyle:'bold',color:'#fff',stroke:'#000',strokeThickness:2}).setOrigin(0.5).setScrollFactor(0).setDepth(602);
+    this._updateBossBar();
+  }
+
+  _updateBossBar() {
+    if(!this.bossBar)return;
+    this.bossBar.clear();
+    const W=GAME_WIDTH, ratio=this.hp/this.maxHp;
+    const c = ratio>0.5?0xe74c3c:ratio>0.25?0xf39c12:0xff0000;
+    this.bossBar.fillStyle(c,1); this.bossBar.fillRoundedRect(W/2-118,6,236*ratio,12,4);
+  }
+
   takeDamage(amount, attackerX) {
-    if (!this.alive) return;
-
-    this.hp -= amount;
-
-    // 受伤反馈
-    this.aiState = 'hurt';
-    this.hurtTimer = 200;
+    if(!this.alive)return;
+    this.hp-=amount; this.aiState='hurt'; this.hurtTimer=200;
     this.setTint(0xff4444);
-
-    // 击退
-    const knockbackDir = this.x > attackerX ? 1 : -1;
-    this.setVelocityX(knockbackDir * 150);
-    this.setVelocityY(-30);
-
-    // 伤害数字
-    this.showDamageNumber(amount);
-
-    // 命中特效
-    const hitFx = this.scene.add.image(this.x, this.y - 20, 'hit_effect');
-    hitFx.setDepth(12);
-    this.scene.tweens.add({
-      targets: hitFx,
-      alpha: 0,
-      scaleX: 2,
-      scaleY: 2,
-      duration: 300,
-      onComplete: () => hitFx.destroy(),
-    });
-
-    if (this.hp <= 0) {
-      this.die();
-    }
+    const kb=this.x>attackerX?1:-1; this.setVelocityX(kb*150); this.setVelocityY(-40);
+    this._showDmgNum(amount);
+    this._hitFx();
+    if(this.isBoss)this._updateBossBar();
+    if(this.hp<=0)this.die();
   }
 
-  /**
-   * 显示伤害数字
-   */
-  showDamageNumber(amount) {
-    const txt = this.scene.add.text(this.x, this.y - 40, `-${amount}`, {
-      fontSize: '20px',
-      fontFamily: 'Arial, sans-serif',
-      fontStyle: 'bold',
-      color: '#ff4444',
-      stroke: '#000000',
-      strokeThickness: 3,
-    }).setOrigin(0.5).setDepth(50);
-
-    this.scene.tweens.add({
-      targets: txt,
-      y: txt.y - 40,
-      alpha: 0,
-      duration: 800,
-      ease: 'Power2',
-      onComplete: () => txt.destroy(),
-    });
+  _showDmgNum(amount) {
+    const txt=this.scene.add.text(this.x+Phaser.Math.Between(-20,20),this.y-50,`-${amount}`,{fontSize:'18px',fontFamily:'Arial',fontStyle:'bold',color:'#ff4444',stroke:'#000',strokeThickness:3}).setOrigin(0.5).setDepth(50);
+    this.scene.tweens.add({targets:txt,y:txt.y-40,alpha:0,duration:800,onComplete:()=>txt.destroy()});
   }
 
-  /**
-   * 死亡
-   */
+  _hitFx() {
+    const fx=this.scene.add.image(this.x,this.y-20,'hit_effect').setDepth(12);
+    this.scene.tweens.add({targets:fx,alpha:0,scaleX:2,scaleY:2,duration:300,onComplete:()=>fx.destroy()});
+  }
+
   die() {
-    if (!this.alive) return;
-    this.alive = false;
-    this.aiState = 'dead';
-    this.body.enable = false;
-
+    if(!this.alive)return; this.alive=false; this.aiState='dead'; this.body.enable=false;
+    if(this.bossBarBg){this.bossBarBg.destroy();this.bossBar.destroy();this.bossName.destroy();}
     this.setTint(0x555555);
-    this.scene.tweens.add({
-      targets: this,
-      alpha: 0,
-      duration: 500,
-      onComplete: () => {
-        this.scene.combatSystem.enemyDefeated(this);
-        this.destroy();
-      },
-    });
-  }
-
-  /**
-   * AI 更新
-   */
-  update(time, delta) {
-    if (!this.alive || !this.body) return;
-
-    const player = this.scene.player;
-    if (!player || !player.alive) {
-      // 玩家死亡后停止移动
-      this.setVelocityX(0);
-      return;
-    }
-
-    const distToPlayer = Phaser.Math.Distance.Between(this.x, this.y, player.x, player.y);
-    const cfg = this.enemyConfig;
-
-    // 受伤状态处理
-    if (this.aiState === 'hurt') {
-      this.hurtTimer -= delta;
-      if (this.hurtTimer <= 0) {
-        this.clearTint();
-        this.aiState = 'chase';
+    // Boss 死亡爆炸
+    if(this.isBoss) {
+      for(let i=0;i<8;i++){
+        const p=this.scene.add.circle(this.x+Phaser.Math.Between(-40,40),this.y+Phaser.Math.Between(-40,20),Phaser.Math.Between(3,8),0xff6b6b,0.8).setDepth(15);
+        this.scene.tweens.add({targets:p,x:p.x+Phaser.Math.Between(-80,80),y:p.y-Phaser.Math.Between(50,100),alpha:0,duration:600,onComplete:()=>p.destroy()});
       }
-      // 受伤时不执行 AI
-      if (this.hurtTimer > 100) return;
     }
-
-    // 攻击冷却
-    if (this.attackCooldown > 0) {
-      this.attackCooldown -= delta;
-    }
-
-    // 朝向玩家
-    if (player.x < this.x) {
-      this.setFlipX(true);
-    } else {
-      this.setFlipX(false);
-    }
-
-    // 状态机
-    switch (this.aiState) {
-      case 'patrol':
-        this.doPatrol(delta);
-        if (distToPlayer < cfg.chaseRange) {
-          this.aiState = 'chase';
-        }
-        break;
-
-      case 'chase':
-        this.doChase(player, delta);
-        if (distToPlayer < cfg.attackRange && this.attackCooldown <= 0) {
-          this.aiState = 'attack';
-          this.doAttack(player);
-        } else if (distToPlayer > cfg.chaseRange * 1.5) {
-          // 玩家远离，回到巡逻
-          this.aiState = 'patrol';
-        }
-        break;
-
-      case 'attack':
-        // 攻击动作完成后回到追逐
-        if (distToPlayer > cfg.attackRange) {
-          this.aiState = 'chase';
-        }
-        break;
-    }
-
-    // 超出屏幕销毁
-    if (this.x < -100) {
-      this.destroy();
-    }
+    this.scene.tweens.add({targets:this,alpha:0,duration:500,onComplete:()=>{this.scene.combatSystem.enemyDefeated(this);this.destroy();}});
   }
 
-  /**
-   * 巡逻行为
-   */
-  doPatrol(delta) {
-    this.patrolTimer += delta;
-    if (this.patrolTimer > 2000) {
-      this.patrolTimer = 0;
-      this.patrolDir *= -1;
+  update(time, delta) {
+    if(!this.alive||!this.body)return;
+    const player=this.scene.player; if(!player||!player.alive){this.setVelocityX(0);return;}
+    const dist=Phaser.Math.Distance.Between(this.x,this.y,player.x,player.y);
+    const cfg=this.enemyConfig;
+
+    if(this.aiState==='hurt'){this.hurtTimer-=delta;if(this.hurtTimer<=0){this.clearTint();this.aiState='chase';}if(this.hurtTimer>100)return;}
+    if(this.attackCD>0)this.attackCD-=delta;
+    if(player.x<this.x)this.setFlipX(true);else this.setFlipX(false);
+
+    switch(this.aiState) {
+      case'patrol':
+        this.patrolTimer+=delta; if(this.patrolTimer>2000){this.patrolTimer=0;this.patrolDir*=-1;}
+        this.setVelocityX(this.patrolDir*cfg.speed*0.4);
+        if(dist<cfg.chaseRange)this.aiState='chase';
+        break;
+      case'chase':
+        this.setVelocityX((player.x<this.x?-1:1)*cfg.speed);
+        if(this.isBoss){
+          // Boss 会尝试切换通道
+          if(player.y<this.y-40)this.setVelocityY(-60);
+          else if(player.y>this.y+40)this.setVelocityY(60);
+          else this.setVelocityY(0);
+        }else{
+          if(player.y<this.y-30)this.setVelocityY(-60);
+          else if(player.y>this.y+30)this.setVelocityY(60);
+          else this.setVelocityY(0);
+        }
+        if(dist<cfg.atkRange&&this.attackCD<=0){this.aiState='attack';this.attackCD=cfg.atkCD;this.scene.combatSystem.enemyAttack(this,player);this.aiState='chase';}
+        else if(dist>cfg.chaseRange*1.5)this.aiState='patrol';
+        break;
     }
-    this.setVelocityX(this.patrolDir * this.enemyConfig.speed * 0.4);
-  }
-
-  /**
-   * 追逐玩家
-   */
-  doChase(player) {
-    const cfg = this.enemyConfig;
-    const dir = player.x < this.x ? -1 : 1;
-    this.setVelocityX(dir * cfg.speed);
-
-    // 尝试对齐玩家通道
-    if (player.y < this.y - 30) {
-      this.setVelocityY(-80);
-    } else if (player.y > this.y + 30) {
-      this.setVelocityY(80);
-    } else {
-      this.setVelocityY(0);
-    }
-  }
-
-  /**
-   * 攻击玩家
-   */
-  doAttack(player) {
-    this.attackCooldown = this.enemyConfig.attackCooldown;
-    this.setVelocityX(0);
-
-    // 将伤害传递给战斗系统
-    this.scene.combatSystem.enemyAttack(this, player);
-    this.aiState = 'chase';
+    if(this.x<-100)this.destroy();
   }
 }

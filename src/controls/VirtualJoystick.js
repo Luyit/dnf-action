@@ -1,243 +1,172 @@
 import Phaser from 'phaser';
+import { SKILLS } from '../config/GameConfig.js';
 
 /**
- * 虚拟摇杆控制器
- * 屏幕左下角的触摸/鼠标拖动轮盘，控制角色移动方向
- * 同时支持键盘 WSAD / 方向键作为后备输入
+ * DNF 手游风格操作控件（屏幕固定）
+ * - 左下：方向轮盘
+ * - 右下：跳跃 + 攻击 + 技能栏
  */
-export class VirtualJoystick {
-  constructor(scene, x, y, radius = 80) {
+export class GameControls {
+  constructor(scene) {
     this.scene = scene;
-    this.baseX = x;
-    this.baseY = y;
-    this.radius = radius;
+    this.dirX = 0; this.dirY = 0; this.isJoystickActive = false;
+    this.attackPressed = false; this.attackJust = false;
+    this.jumpJust = false; this.jumpPressed = false;
+    this.dashJust = false;
+    this.skillsTriggered = {}; // { skillId: true }
+    this.skillCooldownTimers = {}; // { skillId: remaining }
 
-    // 方向输出
-    this.dirX = 0;
-    this.dirY = 0;
-    this.isActive = false;
+    const W = scene.cameras.main.width;
+    const H = scene.cameras.main.height;
 
-    // 攻击按钮状态
-    this.attackPressed = false;
-    this.attackJustPressed = false;
-
-    this.createJoystickGfx();
-    this.createAttackButton();
-    this.setupKeyboardInput();
+    this.createDpad(W, H);
+    this.createActionButtons(W, H);
+    this.createSkillBar(W, H);
+    this.setupKeyboard();
   }
 
-  /**
-   * 创建摇杆图形
-   */
-  createJoystickGfx() {
-    const r = this.radius;
+  // ── 方向轮盘（左下）──
+  createDpad(W, H) {
+    const cx = 110; const cy = H - 150; const r = 70;
+    const g = this.scene.add.graphics().setScrollFactor(0).setDepth(500);
+    g.fillStyle(0xffffff, 0.08); g.fillCircle(cx, cy, r);
+    g.lineStyle(2, 0xffffff, 0.25); g.strokeCircle(cx, cy, r);
+    // 十字线
+    g.lineStyle(1, 0xffffff, 0.1);
+    g.lineBetween(cx - r, cy, cx + r, cy);
+    g.lineBetween(cx, cy - r, cx, cy + r);
+    this.dpadBase = g;
 
-    // 底座
-    this.baseCircle = this.scene.add.graphics();
-    this.baseCircle.fillStyle(0xffffff, 0.1);
-    this.baseCircle.fillCircle(this.baseX, this.baseY, r);
-    this.baseCircle.lineStyle(2, 0xffffff, 0.3);
-    this.baseCircle.strokeCircle(this.baseX, this.baseY, r);
-    this.baseCircle.setDepth(100);
+    const thumb = this.scene.add.graphics().setScrollFactor(0).setDepth(501);
+    thumb.fillStyle(0xffffff, 0.3); thumb.fillCircle(cx, cy, 28);
+    thumb.fillStyle(0xffffff, 0.5); thumb.fillCircle(cx, cy, 12);
+    this.dpadThumb = thumb;
 
-    // 杆头
-    this.thumbCircle = this.scene.add.graphics();
-    this.thumbCircle.fillStyle(0xffffff, 0.35);
-    this.thumbCircle.fillCircle(this.baseX, this.baseY, r * 0.4);
-    this.thumbCircle.fillStyle(0xffffff, 0.5);
-    this.thumbCircle.fillCircle(this.baseX, this.baseY, r * 0.2);
-    this.thumbCircle.setDepth(101);
-
-    // 触摸/鼠标事件
-    const interactiveZone = this.scene.add.zone(this.baseX, this.baseY, r * 3, r * 3)
-      .setDepth(99)
-      .setInteractive();
-
-    this.scene.input.on('pointerdown', (pointer) => {
-      // 只在左半屏响应摇杆
-      if (pointer.x < this.scene.cameras.main.width / 2) {
-        this.isActive = true;
-        this.updateThumb(pointer);
-      }
+    // 触摸
+    this.scene.input.on('pointerdown', (p) => {
+      if (p.x < W * 0.45 && p.y > H * 0.35) { this.isJoystickActive = true; this._updateThumb(p, cx, cy, r); }
+      if (p.x > W * 0.5 && p.y > H * 0.2) this._checkActionHit(p);
     });
-
-    this.scene.input.on('pointermove', (pointer) => {
-      if (this.isActive) {
-        this.updateThumb(pointer);
-      }
-    });
-
-    this.scene.input.on('pointerup', () => {
-      this.isActive = false;
-      this.dirX = 0;
-      this.dirY = 0;
-      this.thumbCircle.setPosition(this.baseX, this.baseY);
-    });
+    this.scene.input.on('pointermove', (p) => { if (this.isJoystickActive) this._updateThumb(p, cx, cy, r); });
+    this.scene.input.on('pointerup', () => { this.isJoystickActive = false; this.dirX = 0; this.dirY = 0; thumb.setPosition(cx, cy); });
   }
 
-  /**
-   * 更新杆头位置和方向
-   */
-  updateThumb(pointer) {
-    let dx = pointer.x - this.baseX;
-    let dy = pointer.y - this.baseY;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-
-    if (dist > this.radius) {
-      dx = (dx / dist) * this.radius;
-      dy = (dy / dist) * this.radius;
-    }
-
-    this.thumbCircle.setPosition(this.baseX + dx, this.baseY + dy);
-
-    // 归一化方向（带死区）
-    const deadzone = 0.2;
-    if (dist < this.radius * deadzone) {
-      this.dirX = 0;
-      this.dirY = 0;
-    } else {
-      this.dirX = dx / this.radius;
-      this.dirY = dy / this.radius;
-    }
+  _updateThumb(p, cx, cy, r) {
+    let dx = p.x - cx, dy = p.y - cy;
+    const dist = Math.sqrt(dx*dx+dy*dy);
+    if (dist > r) { dx = dx/dist*r; dy = dy/dist*r; }
+    this.dpadThumb.setPosition(cx+dx, cy+dy);
+    this.dirX = dist < r*0.2 ? 0 : dx/r;
+    this.dirY = dist < r*0.2 ? 0 : dy/r;
   }
 
-  /**
-   * 创建攻击按钮
-   */
-  createAttackButton() {
-    const btnX = this.scene.cameras.main.width - this.radius - 20;
-    const btnY = this.baseY;
-    const btnR = 45;
+  // ── 操作按钮（右下）──
+  createActionButtons(W, H) {
+    // 攻击按钮
+    const aX = W - 100, aY = H - 130, aR = 50;
+    const atkG = this.scene.add.graphics().setScrollFactor(0).setDepth(500);
+    atkG.fillStyle(0xcc3333, 0.5); atkG.fillCircle(aX, aY, aR);
+    atkG.lineStyle(2, 0xff6666, 0.7); atkG.strokeCircle(aX, aY, aR);
+    this.scene.add.text(aX, aY, '攻击', { fontSize:'16px', fontFamily:'Arial', fontStyle:'bold', color:'#fff', stroke:'#000', strokeThickness:3 }).setOrigin(0.5).setScrollFactor(0).setDepth(501);
 
-    // 按钮背景
-    this.atkBtnBg = this.scene.add.graphics();
-    this.atkBtnBg.fillStyle(0xe74c3c, 0.4);
-    this.atkBtnBg.fillCircle(btnX, btnY, btnR);
-    this.atkBtnBg.lineStyle(2, 0xe74c3c, 0.6);
-    this.atkBtnBg.strokeCircle(btnX, btnY, btnR);
-    this.atkBtnBg.setDepth(100);
+    this._makeBtnZone(aX, aY, aR, () => { this.attackPressed = true; this.attackJust = true; });
 
-    // 按钮文字
-    this.atkLabel = this.scene.add.text(btnX, btnY, '攻击', {
-      fontSize: '16px',
-      fontFamily: 'Arial, sans-serif',
-      fontStyle: 'bold',
-      color: '#ffffff',
-    }).setOrigin(0.5).setDepth(101);
+    // 跳跃按钮
+    const jX = W - 180, jY = H - 190, jR = 28;
+    const jG = this.scene.add.graphics().setScrollFactor(0).setDepth(500);
+    jG.fillStyle(0x3498db, 0.4); jG.fillCircle(jX, jY, jR);
+    jG.lineStyle(2, 0x5dade2, 0.6); jG.strokeCircle(jX, jY, jR);
+    this.scene.add.text(jX, jY, '跳', { fontSize:'13px', fontFamily:'Arial', fontStyle:'bold', color:'#fff', stroke:'#000', strokeThickness:2 }).setOrigin(0.5).setScrollFactor(0).setDepth(501);
 
-    // 技能按钮文字
-    // 普通攻击标签
-    this.atkSubLabel = this.scene.add.text(btnX, btnY + 22, '普攻', {
-      fontSize: '11px',
-      fontFamily: 'Arial, sans-serif',
-      color: '#ffcccc',
-    }).setOrigin(0.5).setDepth(101);
+    this._makeBtnZone(jX, jY, jR*1.3, () => { this.jumpJust = true; this.jumpPressed = true; }, () => { this.jumpPressed = false; });
+  }
 
-    // 触摸/点击区域
-    const atkZone = this.scene.add.zone(btnX, btnY, btnR * 2.5, btnR * 2.5)
-      .setDepth(99)
-      .setInteractive();
+  // ── 技能栏（攻击按钮上方）──
+  createSkillBar(W, H) {
+    this.skillBtns = [];
+    const startX = W - 250, y = H - 240, spacing = 56;
+    SKILLS.forEach((sk, i) => {
+      const x = startX + i * spacing;
+      const gfx = this.scene.add.graphics().setScrollFactor(0).setDepth(500);
+      this._drawSkillBtn(gfx, x, y, sk, false);
+      const txt = this.scene.add.text(x, y-5, sk.name, { fontSize:'10px', fontFamily:'Arial', color:'#fff', stroke:'#000', strokeThickness:2 }).setOrigin(0.5).setScrollFactor(0).setDepth(502);
+      const cdTxt = this.scene.add.text(x, y+5, sk.key, { fontSize:'9px', fontFamily:'Arial', color:'#aaa', stroke:'#000', strokeThickness:1 }).setOrigin(0.5).setScrollFactor(0).setDepth(502);
+      const cdOverlay = this.scene.add.graphics().setScrollFactor(0).setDepth(503);
 
-    atkZone.on('pointerdown', () => {
-      this.attackPressed = true;
-      this.attackJustPressed = true;
-      this.atkBtnBg.clear();
-      this.atkBtnBg.fillStyle(0xff6b6b, 0.6);
-      this.atkBtnBg.fillCircle(btnX, btnY, btnR);
-      this.atkBtnBg.lineStyle(2, 0xff6b6b, 0.8);
-      this.atkBtnBg.strokeCircle(btnX, btnY, btnR);
-
-      // 缩放反馈
-      this.scene.tweens.add({
-        targets: [this.atkBtnBg, this.atkLabel, this.atkSubLabel],
-        scaleX: 0.9,
-        scaleY: 0.9,
-        duration: 50,
-        yoyo: true,
-      });
-    });
-
-    atkZone.on('pointerup', () => {
-      this.attackPressed = false;
-      this.atkBtnBg.clear();
-      this.atkBtnBg.fillStyle(0xe74c3c, 0.4);
-      this.atkBtnBg.fillCircle(btnX, btnY, btnR);
-      this.atkBtnBg.lineStyle(2, 0xe74c3c, 0.6);
-      this.atkBtnBg.strokeCircle(btnX, btnY, btnR);
-    });
-
-    atkZone.on('pointerout', () => {
-      this.attackPressed = false;
-      this.atkBtnBg.clear();
-      this.atkBtnBg.fillStyle(0xe74c3c, 0.4);
-      this.atkBtnBg.fillCircle(btnX, btnY, btnR);
-      this.atkBtnBg.lineStyle(2, 0xe74c3c, 0.6);
-      this.atkBtnBg.strokeCircle(btnX, btnY, btnR);
+      this._makeBtnZone(x, y, 24, () => { this.skillsTriggered[sk.id] = true; });
+      this.skillBtns.push({ sk, x, y, gfx, txt, cdTxt, cdOverlay, cd:0 });
     });
   }
 
-  /**
-   * 键盘输入支持
-   */
-  setupKeyboardInput() {
-    this.keys = this.scene.input.keyboard.addKeys({
-      up: Phaser.Input.Keyboard.KeyCodes.W,
-      down: Phaser.Input.Keyboard.KeyCodes.S,
-      left: Phaser.Input.Keyboard.KeyCodes.A,
-      right: Phaser.Input.Keyboard.KeyCodes.D,
-      jump: Phaser.Input.Keyboard.KeyCodes.SPACE,
-      attack: Phaser.Input.Keyboard.KeyCodes.J,
-    });
-
-    this.arrowKeys = this.scene.input.keyboard.createCursorKeys();
+  _drawSkillBtn(g, x, y, sk, onCd) {
+    g.clear();
+    g.fillStyle(onCd ? 0x333333 : 0x2c3e50, 0.7); g.fillRoundedRect(x-22, y-22, 44, 44, 6);
+    g.lineStyle(2, onCd ? 0x555555 : 0x7f8c8d, 0.8); g.strokeRoundedRect(x-22, y-22, 44, 44, 6);
   }
 
-  /**
-   * 获取综合方向输入（摇杆 + 键盘）
-   */
+  _makeBtnZone(x, y, r, onDown, onUp) {
+    const z = this.scene.add.zone(x, y, r*2.5, r*2.5).setScrollFactor(0).setDepth(499).setInteractive();
+    z.on('pointerdown', onDown);
+    if (onUp) { z.on('pointerup', onUp); z.on('pointerout', onUp); }
+  }
+
+  _checkActionHit(p) {
+    // 简单：仅通过 attack/jump 预定义区域判断，技能栏用独立 zone 处理
+  }
+
+  // ── 键盘 ──
+  setupKeyboard() {
+    const kb = this.scene.input.keyboard;
+    this.keys = kb.addKeys({ up:kb.keyCodes.W, down:kb.keyCodes.S, left:kb.keyCodes.A, right:kb.keyCodes.D, jump:kb.keyCodes.K, attack:kb.keyCodes.J, dash:kb.keyCodes.SHIFT });
+    this.arrowKeys = kb.createCursorKeys();
+    this.skillKeys = {};
+    SKILLS.forEach(s => { this.skillKeys[s.id] = kb.addKey(s.key); });
+  }
+
   getDirection() {
-    let x = this.dirX;
-    let y = this.dirY;
-
-    // 键盘覆盖
-    if (this.keys.left.isDown || this.arrowKeys.left.isDown) x = -1;
-    if (this.keys.right.isDown || this.arrowKeys.right.isDown) x = 1;
-    if (this.keys.up.isDown || this.arrowKeys.up.isDown) y = -1;
-    if (this.keys.down.isDown || this.arrowKeys.down.isDown) y = 1;
-
-    return { x, y };
+    let x=this.dirX, y=this.dirY;
+    if (this.keys.left.isDown||this.arrowKeys.left.isDown) x=-1;
+    if (this.keys.right.isDown||this.arrowKeys.right.isDown) x=1;
+    if (this.keys.up.isDown||this.arrowKeys.up.isDown) y=-1;
+    if (this.keys.down.isDown||this.arrowKeys.down.isDown) y=1;
+    return {x,y};
   }
 
-  /**
-   * 获取攻击输入
-   */
-  getAttackInput() {
-    const keyPressed = Phaser.Input.Keyboard.JustDown(this.keys.attack);
-    if (this.attackJustPressed || keyPressed) {
-      this.attackJustPressed = false;
-      return true;
-    }
-    return false;
+  getAttack() { const v=this.attackJust; this.attackJust=false; return v||Phaser.Input.Keyboard.JustDown(this.keys.attack); }
+  getJump() { const v=this.jumpJust; this.jumpJust=false; return v||Phaser.Input.Keyboard.JustDown(this.keys.jump); }
+  getDash() { return this.dashJust||Phaser.Input.Keyboard.JustDown(this.keys.dash); }
+
+  getSkillTriggered(id) {
+    const v=this.skillsTriggered[id]||false;
+    if (v) this.skillsTriggered[id]=false;
+    return v||Phaser.Input.Keyboard.JustDown(this.skillKeys[id]);
   }
 
-  /**
-   * 每帧更新
-   */
-  update() {
-    // 攻击按钮刚刚按下检测（仅保留一帧）
-    if (this.attackJustPressed) {
-      // 仅在本帧有效，由 getAttackInput 消费
-    }
+  update(delta) {
+    // 技能冷却
+    this.skillBtns.forEach(b => {
+      if (b.cd > 0) {
+        b.cd -= delta;
+        if (b.cd <= 0) { b.cd = 0; this._drawSkillBtn(b.gfx, b.x, b.y, b.sk, false); b.cdTxt.setAlpha(1); }
+        b.cdOverlay.clear();
+        if (b.cd > 0) {
+          const pct = b.cd / b.sk.cooldown;
+          b.cdOverlay.fillStyle(0x000000, 0.6);
+          b.cdOverlay.fillRoundedRect(b.x-22, b.y-22+(1-pct)*44, 44, pct*44, 6);
+        }
+      }
+    });
   }
 
-  /**
-   * 销毁控件
-   */
-  destroy() {
-    if (this.baseCircle) this.baseCircle.destroy();
-    if (this.thumbCircle) this.thumbCircle.destroy();
-    if (this.atkBtnBg) this.atkBtnBg.destroy();
-    if (this.atkLabel) this.atkLabel.destroy();
-    if (this.atkSubLabel) this.atkSubLabel.destroy();
+  startSkillCooldown(id) {
+    const sk = SKILLS.find(s=>s.id===id); if (!sk) return;
+    const b = this.skillBtns.find(b=>b.sk.id===id); if (!b) return;
+    b.cd = sk.cooldown;
+    this._drawSkillBtn(b.gfx, b.x, b.y, sk, true);
+  }
+
+  getSkillCooldown(id) {
+    const b = this.skillBtns.find(b=>b.sk.id===id);
+    return b ? b.cd / SKILLS.find(s=>s.id===id).cooldown : 0;
   }
 }

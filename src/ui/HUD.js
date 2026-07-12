@@ -1,212 +1,96 @@
 import Phaser from 'phaser';
-import { GAME_WIDTH, COLORS, PLAYER_CONFIG } from '../config/GameConfig.js';
+import { GAME_WIDTH, COLORS, PLAYER_CONFIG, COMBO_GRADES } from '../config/GameConfig.js';
 
-/**
- * 游戏 HUD
- * 显示血量、连击数、击杀数、分数
- */
 export class HUD {
   constructor(scene) {
     this.scene = scene;
-    this.kills = 0;
-    this.score = 0;
-
+    this.kills = 0; this.score = 0;
     this.create();
   }
 
   create() {
-    const pad = 16;
+    const W = GAME_WIDTH;
+    // ── 左上：角色面板 ──
+    const panel = this.scene.add.graphics().setScrollFactor(0).setDepth(600);
+    panel.fillStyle(0x000000, 0.5); panel.fillRoundedRect(8, 8, 220, 66, 8);
+    panel.lineStyle(1, 0x555555, 0.8); panel.strokeRoundedRect(8, 8, 220, 66, 8);
 
-    // ---- 左上角：角色状态 ----
-    // 等级标签
-    this.lvlLabel = this.scene.add.text(pad, pad, 'Lv.1', {
-      fontSize: '14px',
-      fontFamily: 'Arial, sans-serif',
-      fontStyle: 'bold',
-      color: '#f39c12',
-      stroke: '#000',
-      strokeThickness: 2,
-    }).setDepth(200);
+    // 角色剪影
+    const portrait = this.scene.add.graphics().setScrollFactor(0).setDepth(601);
+    portrait.fillStyle(COLORS.PLAYER, 0.8); portrait.fillRoundedRect(16,16,40,48,4);
+    portrait.fillStyle(0x87ceeb,1); portrait.fillCircle(36,16,8);
+    this.scene.add.text(24,16,'Lv.1',{fontSize:'9px',fontFamily:'Arial',color:'#f39c12',stroke:'#000',strokeThickness:1}).setScrollFactor(0).setDepth(602);
+    
+    // HP
+    this.scene.add.text(64,16,'HP',{fontSize:'10px',fontFamily:'Arial',fontStyle:'bold',color:'#e74c3c',stroke:'#000',strokeThickness:1}).setScrollFactor(0).setDepth(602);
+    this.hpBarBg = this.scene.add.graphics().setScrollFactor(0).setDepth(601);
+    this.hpBarBg.fillStyle(COLORS.HEALTH_BG,0.8); this.hpBarBg.fillRoundedRect(84,16,120,10,3);
+    this.hpBar = this.scene.add.graphics().setScrollFactor(0).setDepth(602);
+    this.hpText = this.scene.add.text(144,21,'200/200',{fontSize:'9px',fontFamily:'Arial',color:'#fff',stroke:'#000',strokeThickness:1}).setOrigin(0.5).setScrollFactor(0).setDepth(603);
 
-    // 名称
-    this.nameLabel = this.scene.add.text(pad + 40, pad, '鬼剑士', {
-      fontSize: '14px',
-      fontFamily: 'Arial, sans-serif',
-      color: '#ffffff',
-      stroke: '#000',
-      strokeThickness: 2,
-    }).setDepth(200);
+    // MP
+    this.scene.add.text(64,34,'MP',{fontSize:'10px',fontFamily:'Arial',fontStyle:'bold',color:'#3498db',stroke:'#000',strokeThickness:1}).setScrollFactor(0).setDepth(602);
+    this.mpBarBg = this.scene.add.graphics().setScrollFactor(0).setDepth(601);
+    this.mpBarBg.fillStyle(0x1a3a5c,0.8); this.mpBarBg.fillRoundedRect(84,34,120,8,3);
+    this.mpBar = this.scene.add.graphics().setScrollFactor(0).setDepth(602);
 
-    // 血条背景
-    const hpBarX = pad;
-    const hpBarY = pad + 24;
-    const hpBarW = 180;
-    const hpBarH = 14;
+    // ── 右上：波次/击杀 ──
+    this.waveText = this.scene.add.text(W-16,12,'',{fontSize:'16px',fontFamily:'Arial',fontStyle:'bold',color:'#f39c12',stroke:'#000',strokeThickness:3}).setOrigin(1,0).setScrollFactor(0).setDepth(600);
+    this.killText = this.scene.add.text(W-16,34,'',{fontSize:'12px',fontFamily:'Arial',color:'#e74c3c',stroke:'#000',strokeThickness:2}).setOrigin(1,0).setScrollFactor(0).setDepth(600);
 
-    this.hpBarBg = this.scene.add.graphics().setDepth(200);
-    this.hpBarBg.fillStyle(COLORS.HEALTH_BG, 0.8);
-    this.hpBarBg.fillRoundedRect(hpBarX, hpBarY, hpBarW, hpBarH, 4);
-    this.hpBarBg.lineStyle(1, 0x555555, 1);
-    this.hpBarBg.strokeRoundedRect(hpBarX, hpBarY, hpBarW, hpBarH, 4);
+    // ── 中央：连击评级 ──
+    this.comboGradeText = this.scene.add.text(W/2, 50, '', {fontSize:'36px',fontFamily:'Arial',fontStyle:'bold',color:'#fff',stroke:'#000',strokeThickness:4}).setOrigin(0.5).setScrollFactor(0).setDepth(600).setAlpha(0);
+    this.comboCountText = this.scene.add.text(W/2, 85, '', {fontSize:'20px',fontFamily:'Arial',color:'#fff',stroke:'#000',strokeThickness:3}).setOrigin(0.5).setScrollFactor(0).setDepth(600).setAlpha(0);
 
-    // 血条
-    this.hpBar = this.scene.add.graphics().setDepth(201);
+    // ── 底部提示 ──
+    this.hintText = this.scene.add.text(W/2, this.scene.cameras.main.height-8, '', {fontSize:'11px',fontFamily:'Arial',color:'#888',stroke:'#000',strokeThickness:2}).setOrigin(0.5,1).setScrollFactor(0).setDepth(600);
 
-    // HP 文字
-    this.hpText = this.scene.add.text(hpBarX + hpBarW / 2, hpBarY + hpBarH / 2, '', {
-      fontSize: '11px',
-      fontFamily: 'Arial, sans-serif',
-      fontStyle: 'bold',
-      color: '#ffffff',
-      stroke: '#000',
-      strokeThickness: 2,
-    }).setOrigin(0.5).setDepth(202);
-
-    // 初始绘制血条
-    this.updateHP(PLAYER_CONFIG.MAX_HP, PLAYER_CONFIG.MAX_HP);
-
-    // ---- 右上角：击杀和分数 ----
-    const rx = GAME_WIDTH - pad;
-    this.killLabel = this.scene.add.text(rx, pad, '击杀: 0', {
-      fontSize: '14px',
-      fontFamily: 'Arial, sans-serif',
-      color: '#e74c3c',
-      stroke: '#000',
-      strokeThickness: 2,
-    }).setOrigin(1, 0).setDepth(200);
-
-    this.scoreLabel = this.scene.add.text(rx, pad + 20, '分数: 0', {
-      fontSize: '14px',
-      fontFamily: 'Arial, sans-serif',
-      color: '#f39c12',
-      stroke: '#000',
-      strokeThickness: 2,
-    }).setOrigin(1, 0).setDepth(200);
-
-    // ---- 连击显示（屏幕中央上方） ----
-    this.comboText = this.scene.add.text(GAME_WIDTH / 2, 60, '', {
-      fontSize: '32px',
-      fontFamily: 'Arial, sans-serif',
-      fontStyle: 'bold',
-      color: '#ff6b6b',
-      stroke: '#000',
-      strokeThickness: 4,
-    }).setOrigin(0.5).setDepth(200).setAlpha(0);
-
-    // ---- 底部操作提示 ----
-    this.hintText = this.scene.add.text(GAME_WIDTH / 2, this.scene.cameras.main.height - 10, '', {
-      fontSize: '11px',
-      fontFamily: 'Arial, sans-serif',
-      color: '#888888',
-      stroke: '#000',
-      strokeThickness: 2,
-    }).setOrigin(0.5, 1).setDepth(200);
+    // 初始值
+    this.updateHP(PLAYER_CONFIG.MAX_HP,PLAYER_CONFIG.MAX_HP);
+    this.updateMP(PLAYER_CONFIG.MAX_MP,PLAYER_CONFIG.MAX_MP);
   }
 
-  /**
-   * 更新血条
-   */
   updateHP(hp, maxHp) {
-    const hpBarX = 16;
-    const hpBarY = 40;
-    const hpBarW = 180;
-    const hpBarH = 14;
-    const ratio = Math.max(0, hp / maxHp);
-
+    const ratio = Math.max(0, hp/maxHp);
     this.hpBar.clear();
-
-    // 血量颜色：绿 -> 黄 -> 红
-    let color;
-    if (ratio > 0.5) {
-      color = COLORS.HEALTH_GREEN;
-    } else if (ratio > 0.25) {
-      color = 0xf1c40f;
-    } else {
-      color = COLORS.HEALTH_RED;
-    }
-
-    this.hpBar.fillStyle(color, 1);
-    this.hpBar.fillRoundedRect(hpBarX, hpBarY, hpBarW * ratio, hpBarH, 4);
-
-    this.hpText.setText(`${hp} / ${maxHp}`);
+    const c = ratio>0.5?COLORS.HEALTH_GREEN:ratio>0.25?0xf1c40f:COLORS.HEALTH_RED;
+    this.hpBar.fillStyle(c,1); this.hpBar.fillRoundedRect(84,16,120*ratio,10,3);
+    this.hpText.setText(`${Math.ceil(hp)}/${maxHp}`);
   }
 
-  /**
-   * 更新连击显示
-   */
-  updateCombo(combo) {
+  updateMP(mp, maxMp) {
+    this.mpBar.clear();
+    this.mpBar.fillStyle(COLORS.MP_BLUE,1); this.mpBar.fillRoundedRect(84,34,120*(mp/maxMp),8,3);
+  }
+
+  updateWave(num, total) {
+    this.waveText.setText(`第 ${num}/${total} 波`);
+  }
+
+  updateKills(k) { this.kills=k; this.killText.setText(`击杀 ${k}`); }
+  updateScore(s) { this.score=s; }
+
+  updateCombo(combo, grade) {
     if (combo >= 5) {
-      this.comboText.setText(`${combo} HITS!`);
-      this.comboText.setAlpha(1);
-      this.comboText.setScale(1.3);
-
-      // 放大弹跳效果
-      this.scene.tweens.add({
-        targets: this.comboText,
-        scaleX: 1,
-        scaleY: 1,
-        duration: 300,
-        ease: 'Back.easeOut',
-      });
-    } else if (combo <= 0) {
-      this.scene.tweens.add({
-        targets: this.comboText,
-        alpha: 0,
-        duration: 200,
-      });
+      this.comboGradeText.setText(grade.grade);
+      this.comboGradeText.setColor(grade.color).setAlpha(1);
+      this.comboCountText.setText(`${combo} HITS`).setAlpha(1);
+      this.scene.tweens.add({targets:this.comboGradeText,scaleX:1.3,scaleY:1.3,duration:100,yoyo:true,ease:'Back.easeOut'});
     } else {
-      this.comboText.setText(`${combo} HITS`);
-      this.comboText.setAlpha(0.8);
-      this.comboText.setScale(1);
+      this.comboGradeText.setAlpha(0);
+      this.comboCountText.setAlpha(0);
     }
   }
 
-  /**
-   * 更新击杀数
-   */
-  updateKills(kills) {
-    this.kills = kills;
-    this.killLabel.setText(`击杀: ${kills}`);
+  showHint(txt, dur=3000) {
+    this.hintText.setText(txt).setAlpha(1);
+    this.scene.tweens.add({targets:this.hintText,alpha:0,delay:dur,duration:500});
   }
 
-  /**
-   * 更新分数
-   */
-  updateScore(score) {
-    this.score = score;
-    this.scoreLabel.setText(`分数: ${score}`);
-  }
-
-  /**
-   * 显示提示信息
-   */
-  showHint(text, duration = 3000) {
-    this.hintText.setText(text);
-    this.hintText.setAlpha(1);
-    this.scene.tweens.add({
-      targets: this.hintText,
-      alpha: 0,
-      delay: duration,
-      duration: 500,
-    });
-  }
-
-  /**
-   * 每帧更新
-   */
   update() {
-    // 连击数渐变
-    const combo = this.scene.combatSystem.getCombo();
-    this.updateCombo(combo);
-
-    // 更新血条
-    const player = this.scene.player;
-    if (player) {
-      this.updateHP(player.hp, player.maxHp);
-    }
-  }
-
-  destroy() {
-    // 清理所有文本和图形
+    const cs = this.scene.combatSystem;
+    this.updateHP(this.scene.player.hp, this.scene.player.maxHp);
+    this.updateMP(this.scene.player.mp, this.scene.player.maxMp);
+    this.updateCombo(cs.getCombo(), cs.getComboGrade());
   }
 }
