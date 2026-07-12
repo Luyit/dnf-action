@@ -1,8 +1,10 @@
 import Phaser from 'phaser';
 import UIPlugin from 'phaser3-rex-plugins/templates/ui/ui-plugin.js';
 import { BootScene } from './scenes/BootScene.js';
+import { LoginScene } from './scenes/LoginScene.js';
+import { MainMenuScene } from './scenes/MainMenuScene.js';
 import { GameScene } from './scenes/GameScene.js';
-import { GAME_WIDTH, GAME_HEIGHT, COLORS } from './config/GameConfig.js';
+import { GAME_WIDTH, GAME_HEIGHT } from './config/GameConfig.js';
 
 const config = {
   type: Phaser.AUTO,
@@ -15,6 +17,8 @@ const config = {
   pixelArt: false,
   scene: [
     BootScene,
+    LoginScene,
+    MainMenuScene,
     GameScene,
   ],
   plugins: {

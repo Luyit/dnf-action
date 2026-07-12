@@ -170,9 +170,12 @@ export class BootScene extends Phaser.Scene {
   }
 
   create() {
-    // 延迟一下让用户看到标题，然后进入游戏
-    this.time.delayedCall(800, () => {
-      this.scene.start('GameScene');
+    // 延迟一下让用户看到标题，然后进入登录
+    this.time.delayedCall(1000, () => {
+      this.cameras.main.fadeOut(500, 0, 0, 0);
+      this.time.delayedCall(500, () => {
+        this.scene.start('LoginScene');
+      });
     });
   }
 }
