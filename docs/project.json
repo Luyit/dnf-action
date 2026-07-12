@@ -1,6 +1,6 @@
 {
   "name": "DNF Mobile Action Game",
   "app_slug": "dnf-mobile-action",
-  "version_description": "Deploy upgraded combat system to GitHub Pages",
+  "version_description": "Add login system and main menu flow",
   "preview_type": "pc"
 }

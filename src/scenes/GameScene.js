@@ -10,6 +10,7 @@ export class GameScene extends Phaser.Scene {
   constructor() { super('GameScene'); }
 
   create() {
+    this.cameras.main.fadeIn(300);
     this.createBackground();
     this.createGround();
 
