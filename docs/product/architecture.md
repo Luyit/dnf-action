@@ -88,7 +88,7 @@ GameScene.startWave(n)
 ## 注意事项
 
 - **UI 必须 setScrollFactor(0)**: GameControls 和 HUD 的所有元素都设置此属性
-- **场景切换 fadeIn**: 从其他场景切换到 GameScene 时，须在 create() 开头调用 `this.cameras.main.fadeIn(300)`
+- **场景切换必须用事件驱动**: `camera.once('camerafadeoutcomplete', () => scene.start('Next'))`，不能用 `delayedCall`，后者在场景 shutdown 时会被取消。
 - **index.html 分工**: 开发用 `/src/main.js`，构建产物用 `./assets/main-xxx.js`，部署时只提交 dist 到 gh-pages 分支
 - **占位纹理**: 所有角色/特效贴图在 BootScene 中用 `make.graphics().generateTexture()` 动态生成
 - **localStorage 键**: `dnf_user` (当前用户), `dnf_account_xxx` (账号密码)

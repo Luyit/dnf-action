@@ -1,6 +1,6 @@
 {
   "name": "DNF Mobile Action Game",
   "app_slug": "dnf-mobile-action",
-  "version_description": "Add login system and main menu flow",
+  "version_description": "Fix black screen and add architecture docs",
   "preview_type": "pc"
 }

@@ -170,10 +170,9 @@ export class BootScene extends Phaser.Scene {
   }
 
   create() {
-    // 延迟一下让用户看到标题，然后进入登录
-    this.time.delayedCall(1000, () => {
-      this.cameras.main.fadeOut(500, 0, 0, 0);
-      this.time.delayedCall(500, () => {
+    this.time.delayedCall(1200, () => {
+      this.cameras.main.fadeOut(400, 0, 0, 0);
+      this.cameras.main.once('camerafadeoutcomplete', () => {
         this.scene.start('LoginScene');
       });
     });

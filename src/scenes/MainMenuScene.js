@@ -124,8 +124,8 @@ export class MainMenuScene extends Phaser.Scene {
   }
 
   _startGame() {
-    this.cameras.main.fadeOut(400, 0, 0, 0);
-    this.time.delayedCall(400, () => {
+    this.cameras.main.fadeOut(300, 0, 0, 0);
+    this.cameras.main.once('camerafadeoutcomplete', () => {
       this.scene.start('GameScene');
     });
   }
@@ -133,7 +133,7 @@ export class MainMenuScene extends Phaser.Scene {
   _logout() {
     localStorage.removeItem('dnf_user');
     this.cameras.main.fadeOut(300, 0, 0, 0);
-    this.time.delayedCall(300, () => {
+    this.cameras.main.once('camerafadeoutcomplete', () => {
       this.scene.start('LoginScene');
     });
   }
