@@ -1,21 +1,27 @@
 <!DOCTYPE html>
+<!--
+  index.html —— 游戏的"入口页"
+  作用：浏览器打开这个文件，就会加载下面的脚本，启动整个游戏。
+  你不用改这里，除非要改网页标题或加图标。
+-->
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <link rel="icon" href="./favicon.ico" type="image/x-icon">
-    <title>DNF Mobile Action</title>
-    <style>
-        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-        html, body { width: 100%; height: 100%; overflow: hidden; }
-        body { line-height: 1; font-family: Arial, sans-serif; background-color: #040218; }
-        ol, ul { list-style: none; }
-        img, video { max-width: 100%; height: auto; display: block; }
-        a { text-decoration: none; color: inherit; }
-    </style>
-  <script type="module" crossorigin src="./assets/main-DGx1yfsW.js"></script>
+  <meta charset="UTF-8" />
+  <!-- 让游戏在手机上按设备宽度显示，禁止用户缩放，避免误触 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>DNF 副本 Action</title>
+  <style>
+    /* 让页面铺满、无白边，背景设为深色 */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a12; }
+    /* 游戏画布居中显示 */
+    #game-container { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+  </style>
+  <script type="module" crossorigin src="./assets/main-B2hWFkmD.js"></script>
 </head>
 <body>
-    <div id="game-container"></div>
+  <!-- Phaser 会把游戏画布塞进这个 div 里 -->
+  <div id="game-container"></div>
+  <!-- type="module" 表示用现代模块方式加载；/src/main.js 是游戏启动入口 -->
 </body>
 </html>
